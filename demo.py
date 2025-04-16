@@ -81,6 +81,25 @@ def fetch_data():
 
 # Cập nhật layout của app
 app.layout = html.Div([
+    dcc.Store(id='selected-data-store', data={'selected_areas': [], 'selected_dates': []}),
+    dcc.Interval(id='interval-component', interval=10*1000, n_intervals=0),
+    
+    # Thêm div thông báo
+    html.Div(
+        id='update-time',
+        style={
+            'position': 'fixed',
+            'top': '10px',
+            'right': '10px',
+            'padding': '5px',
+            'backgroundColor': 'white',
+            'border': '1px solid #ddd',
+            'borderRadius': '3px',
+            'fontSize': '12px',
+            'color': '#666'
+        }
+    ),
+    
     # Header với các KPI chính
     html.Div([
         # KPI Cards
@@ -188,15 +207,7 @@ app.layout = html.Div([
             'height': '350px'
         })
     ]),
-    
-    dcc.Interval(id='interval-component', interval=30*1000, n_intervals=0)
-], style={
-    'padding': '20px',
-    'backgroundColor': '#f0f2f5',
-    'minHeight': '100vh',
-    'maxWidth': '1800px',
-    'margin': '0 auto'
-})
+])
 
 # Cập nhật dropdown khu vực
 @app.callback(
@@ -241,11 +252,14 @@ def update_area_distribution(selected_areas, start_date, end_date, n):
     if df.empty:
         return go.Figure().add_annotation(text="Không có dữ liệu", showarrow=False)
     
+    # Lọc dữ liệu
+    mask = slice(None)
     if start_date and end_date:
-        df = df[(df['Thoi gian phat sinh'] >= start_date) & (df['Thoi gian phat sinh'] <= end_date)]
-    
+        mask = (df['Thoi gian phat sinh'] >= start_date) & (df['Thoi gian phat sinh'] <= end_date)
     if selected_areas:
-        df = df[df['Khu vuc'].isin(selected_areas)]
+        mask = mask & (df['Khu vuc'].isin(selected_areas)) if mask is not slice(None) else df['Khu vuc'].isin(selected_areas)
+    
+    df = df[mask]
     
     if df.empty:
         return go.Figure().add_annotation(text="Không có dữ liệu cho bộ lọc đã chọn", showarrow=False)
@@ -253,8 +267,32 @@ def update_area_distribution(selected_areas, start_date, end_date, n):
     # Tính tổng theo khu vực
     df_grouped = df.groupby('Khu vuc')['Nhu cau cuu ho'].sum().reset_index()
     
-    fig = px.pie(df_grouped, names='Khu vuc', values='Nhu cau cuu ho',
-                 title='Phân Bố Nhu Cầu Cứu Hộ Theo Khu Vực')
+    # Tạo treemap
+    fig = px.treemap(
+        df_grouped,
+        path=['Khu vuc'],
+        values='Nhu cau cuu ho',
+        title='Phân Bố Nhu Cầu Cứu Hộ Theo Khu Vực',
+        color='Nhu cau cuu ho',
+        color_continuous_scale=[
+            '#FFEB83',  # Vàng nhạt cho giá trị thấp
+            '#FFB443',  # Vàng đậm
+            '#FF4D4D',  # Đỏ nhạt
+            '#B50000'   # Đỏ đậm cho giá trị cao
+        ]
+    )
+    
+    fig.update_layout(
+        margin=dict(t=50, l=25, r=25, b=25)
+    )
+    
+    # Thêm định dạng text hiển thị
+    fig.update_traces(
+        textinfo='label+value',
+        texttemplate='%{label}<br>%{value:,.0f}',
+        hovertemplate='<b>%{label}</b><br>Số lượt cứu hộ: %{value:,.0f}<extra></extra>'
+    )
+    
     return fig
 
 # Cập nhật biểu đồ so sánh nhu cầu
@@ -453,6 +491,14 @@ def update_kpis(selected_areas, start_date, end_date, n):
         f"{emergency_cases:,}",
         f"{emergency_success:,}"
     )
+
+# Thêm callback để hiển thị thời gian cập nhật
+@app.callback(
+    Output('update-time', 'children'),
+    Input('interval-component', 'n_intervals')
+)
+def update_time(n):
+    return f"Cập nhật lúc: {datetime.now().strftime('%H:%M:%S')}"
 
 if __name__ == '__main__':
     app.run(debug=True, port=8050)
