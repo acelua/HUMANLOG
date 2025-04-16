@@ -13,71 +13,190 @@ CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS9aPfWcoa-pCiRgelT6z
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 app.title = "Dashboard Phân Tích Nhu Cầu Cứu Hộ"
 
+# Định nghĩa một số style chung để tái sử dụng
+COMMON_STYLES = {
+    'card_container': {
+        'flex': '1',
+        'padding': '15px',
+        'backgroundColor': 'white',
+        'borderRadius': '8px',
+        'boxShadow': '0 1px 3px rgba(0,0,0,0.12)',
+        'margin': '5px',
+        'minWidth': '200px',
+        'display': 'flex',
+        'flexDirection': 'column',
+        'justifyContent': 'center',
+        'alignItems': 'center'
+    },
+    'card_title': {
+        'margin': '0',
+        'textAlign': 'center',
+        'fontSize': '14px',
+        'fontWeight': 'bold',
+        'color': '#666',
+        'textTransform': 'uppercase',
+        'marginBottom': '8px'
+    },
+    'card_value': {
+        'margin': '0',
+        'textAlign': 'center',
+        'fontSize': '28px',
+        'fontWeight': 'bold',
+        'color': '#2c3e50',
+        'marginBottom': '5px'
+    },
+    'card_unit': {
+        'margin': '0',
+        'textAlign': 'center',
+        'fontSize': '12px',
+        'color': '#666'
+    },
+    'chart_container': {
+        'flex': '1',
+        'backgroundColor': 'white',
+        'borderRadius': '8px',
+        'boxShadow': '0 1px 3px rgba(0,0,0,0.12)',
+        'padding': '15px',
+        'margin': '5px',
+        'minHeight': '350px'
+    }
+}
+
 # Hàm load data từ Google Sheet
 def fetch_data():
     try:
         df = pd.read_csv(CSV_URL)
         # Đổi tên cột để khớp với dữ liệu
-        df.columns = ['Khu vuc', 'Nhu cau cuu ho', 'Nhu cau thiet yeu', 'Thoi gian phat sinh']
+        df.columns = ['Khu vuc', 'Nhu cau cuu ho', 'Nhu cau thiet yeu', 'Thoi gian phat sinh', 'Phan loai', 'Thanh cong']
         
         # Chuyển đổi kiểu dữ liệu
         df['Thoi gian phat sinh'] = pd.to_datetime(df['Thoi gian phat sinh'], format='%d/%m/%Y')
         df['Nhu cau cuu ho'] = pd.to_numeric(df['Nhu cau cuu ho'], errors='coerce').fillna(0)
         df['Nhu cau thiet yeu'] = pd.to_numeric(df['Nhu cau thiet yeu'], errors='coerce').fillna(0)
+        # Không cần chuyển đổi Thanh cong nữa vì sẽ so sánh trực tiếp với "Yes"
         return df
     except Exception as e:
         print(f"Lỗi khi tải dữ liệu: {str(e)}")
-        return pd.DataFrame(columns=['Khu vuc', 'Nhu cau cuu ho', 'Nhu cau thiet yeu', 'Thoi gian phat sinh'])
+        return pd.DataFrame(columns=['Khu vuc', 'Nhu cau cuu ho', 'Nhu cau thiet yeu', 'Thoi gian phat sinh', 'Phan loai', 'Thanh cong'])
 
-# Layout
+# Cập nhật layout của app
 app.layout = html.Div([
-    html.H1("Dashboard Phân Tích Nhu Cầu Cứu Hộ", style={'textAlign': 'center', 'marginBottom': 30}),
-    
-    # Filters
+    # Header với các KPI chính
     html.Div([
+        # KPI Cards
         html.Div([
-            html.Label("Chọn Khu Vực:"),
-            dcc.Dropdown(
-                id='area-filter',
-                options=[],
-                multi=True,
-                placeholder="Tất cả khu vực"
-            )
-        ], style={'width': '48%', 'display': 'inline-block'}),
-        
-        html.Div([
-            html.Label("Chọn Khoảng Thời Gian:"),
-            dcc.DatePickerRange(
-                id='date-range',
-                display_format='DD/MM/YYYY'
-            )
-        ], style={'width': '48%', 'display': 'inline-block', 'float': 'right'})
-    ], style={'marginBottom': 20}),
-    
-    # First row of graphs
-    html.Div([
-        html.Div([
-            dcc.Graph(id='area-distribution')
-        ], style={'width': '48%', 'display': 'inline-block'}),
-        
-        html.Div([
-            dcc.Graph(id='needs-comparison')
-        ], style={'width': '48%', 'display': 'inline-block', 'float': 'right'})
+            # Tổng số lượt cứu trợ
+            html.Div([
+                html.H3("TỔNG SỐ LƯỢT CỨU TRỢ", style=COMMON_STYLES['card_title']),
+                html.H2(id='total-rescue', style=COMMON_STYLES['card_value']),
+                html.P("lượt", style=COMMON_STYLES['card_unit'])
+            ], style=COMMON_STYLES['card_container']),
+            
+            # Tỉ lệ cứu trợ thành công
+            html.Div([
+                html.H3("TỈ LỆ CỨU TRỢ THÀNH CÔNG", style=COMMON_STYLES['card_title']),
+                html.H2(id='success-rate', style=COMMON_STYLES['card_value']),
+                html.P("%", style=COMMON_STYLES['card_unit'])
+            ], style=COMMON_STYLES['card_container']),
+            
+            # Số trường hợp khẩn cấp
+            html.Div([
+                html.H3("TRƯỜNG HỢP KHẨN CẤP", style=COMMON_STYLES['card_title']),
+                html.H2(id='emergency-cases', style=COMMON_STYLES['card_value']),
+                html.P("trường hợp", style=COMMON_STYLES['card_unit'])
+            ], style=COMMON_STYLES['card_container']),
+            
+            # Sửa lại card thứ 4
+            html.Div([
+                html.H3("KHẨN CẤP CỨU HỘ THÀNH CÔNG", style=COMMON_STYLES['card_title']),
+                html.H2(id='emergency-success', style=COMMON_STYLES['card_value']),
+                html.P("trường hợp", style=COMMON_STYLES['card_unit'])
+            ], style=COMMON_STYLES['card_container']),
+            
+            # Bộ lọc
+            html.Div([
+                html.H3("BỘ LỌC", style=COMMON_STYLES['card_title']),
+                html.Div([
+                    dcc.Dropdown(
+                        id='area-filter',
+                        options=[],
+                        multi=True,
+                        placeholder="Tất cả khu vực",
+                        style={
+                            'width': '100%',
+                            'marginBottom': '10px'
+                        }
+                    ),
+                    dcc.DatePickerRange(
+                        id='date-range',
+                        display_format='DD/MM/YYYY',
+                        style={'width': '100%'}
+                    )
+                ], style={'width': '100%'})
+            ], style={**COMMON_STYLES['card_container'], 'alignItems': 'stretch'})
+        ], style={
+            'display': 'flex',
+            'justifyContent': 'space-between',
+            'gap': '10px',
+            'marginBottom': '20px',
+            'flexWrap': 'nowrap'
+        }),
     ]),
     
-    # Second row of graphs
+    # Charts section
     html.Div([
+        # First row of charts
         html.Div([
-            dcc.Graph(id='time-trend')
-        ], style={'width': '48%', 'display': 'inline-block'}),
+            html.Div([
+                dcc.Graph(
+                    id='area-distribution',
+                    style={'height': '100%'}
+                )
+            ], style=COMMON_STYLES['chart_container']),
+            
+            html.Div([
+                dcc.Graph(
+                    id='needs-comparison',
+                    style={'height': '100%'}
+                )
+            ], style=COMMON_STYLES['chart_container'])
+        ], style={
+            'display': 'flex',
+            'gap': '10px',
+            'marginBottom': '10px',
+            'height': '350px'
+        }),
         
+        # Second row of charts
         html.Div([
-            dcc.Graph(id='heatmap-chart')
-        ], style={'width': '48%', 'display': 'inline-block', 'float': 'right'})
+            html.Div([
+                dcc.Graph(
+                    id='time-trend',
+                    style={'height': '100%'}
+                )
+            ], style=COMMON_STYLES['chart_container']),
+            
+            html.Div([
+                dcc.Graph(
+                    id='heatmap-chart',
+                    style={'height': '100%'}
+                )
+            ], style=COMMON_STYLES['chart_container'])
+        ], style={
+            'display': 'flex',
+            'gap': '10px',
+            'height': '350px'
+        })
     ]),
     
-    dcc.Interval(id='interval-component', interval=30*1000, n_intervals=0)  # mỗi 30 giây
-])
+    dcc.Interval(id='interval-component', interval=30*1000, n_intervals=0)
+], style={
+    'padding': '20px',
+    'backgroundColor': '#f0f2f5',
+    'minHeight': '100vh',
+    'maxWidth': '1800px',
+    'margin': '0 auto'
+})
 
 # Cập nhật dropdown khu vực
 @app.callback(
@@ -290,6 +409,50 @@ def update_heatmap(selected_areas, start_date, end_date, n):
     )
     
     return fig
+
+# Cập nhật callback để tính toán các KPI mới
+@app.callback(
+    [Output('total-rescue', 'children'),
+     Output('success-rate', 'children'),
+     Output('emergency-cases', 'children'),
+     Output('emergency-success', 'children')],
+    [Input('area-filter', 'value'),
+     Input('date-range', 'start_date'),
+     Input('date-range', 'end_date'),
+     Input('interval-component', 'n_intervals')]
+)
+def update_kpis(selected_areas, start_date, end_date, n):
+    df = fetch_data()
+    if df.empty:
+        return "0", "0,00", "0", "0"
+    
+    # Lọc dữ liệu theo thời gian và khu vực
+    mask = slice(None)
+    if start_date and end_date:
+        mask = (df['Thoi gian phat sinh'] >= start_date) & (df['Thoi gian phat sinh'] <= end_date)
+    if selected_areas:
+        mask = mask & (df['Khu vuc'].isin(selected_areas)) if mask is not slice(None) else df['Khu vuc'].isin(selected_areas)
+    
+    df = df[mask]
+    
+    # Tính toán các KPI
+    total_rescue = len(df)
+    
+    # Tỉ lệ thành công tổng thể
+    yes_no_mask = df['Thanh cong'].isin(['Yes', 'No'])
+    success_rate = (df[yes_no_mask]['Thanh cong'] == 'Yes').mean() * 100
+    
+    # Các trường hợp khẩn cấp
+    emergency_df = df[df['Phan loai'] == 'Emergency']
+    emergency_cases = len(emergency_df)
+    emergency_success = len(emergency_df[emergency_df['Thanh cong'] == 'Yes'])
+    
+    return (
+        f"{total_rescue:,}",
+        f"{success_rate:.2f}",
+        f"{emergency_cases:,}",
+        f"{emergency_success:,}"
+    )
 
 if __name__ == '__main__':
     app.run(debug=True, port=8050)
